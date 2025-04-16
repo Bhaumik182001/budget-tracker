@@ -414,3 +414,4 @@ if (isset($_GET['edit'])) {
 
 </body>
 </html>
+<?php include 'footer.php'; ?>
