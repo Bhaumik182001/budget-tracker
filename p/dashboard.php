@@ -7,6 +7,9 @@ if (!isset($_SESSION['user_id'])) {
 }
 $user_id = $_SESSION['user_id'];
 
+// Process recurring transactions on each load
+$conn->query("CALL ProcessRecurringTransactions()");
+
 // UPDATE transaction
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update'])) {
     $id = $_POST['id'];
@@ -14,9 +17,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update'])) {
     $category = $_POST['category'];
     $amount = $_POST['amount'];
     $description = $_POST['description'];
+    $is_recurring = isset($_POST['is_recurring']) ? 1 : 0;
+    $recurrence_interval = $is_recurring ? intval($_POST['recurrence_interval']) : null;
 
-    $stmt = $conn->prepare("UPDATE transactions SET type=?, category=?, amount=?, description=? WHERE id=? AND user_id=?");
-    $stmt->bind_param("ssdssi", $type, $category, $amount, $description, $id, $user_id);
+    $stmt = $conn->prepare("UPDATE transactions SET type=?, category=?, amount=?, description=?, is_recurring=?, recurrence_interval=? WHERE id=? AND user_id=?");
+    $stmt->bind_param("ssdsiiii", $type, $category, $amount, $description, $is_recurring, $recurrence_interval, $id, $user_id);
     $stmt->execute();
 }
 
@@ -26,9 +31,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add'])) {
     $category = $_POST['category'];
     $amount = $_POST['amount'];
     $description = $_POST['description'];
+    $is_recurring = isset($_POST['is_recurring']) ? 1 : 0;
+    $recurrence_interval = $is_recurring ? intval($_POST['recurrence_interval']) : null;
 
-    $stmt = $conn->prepare("INSERT INTO transactions (user_id, type, category, amount, description) VALUES (?, ?, ?, ?, ?)");
-    $stmt->bind_param("issds", $user_id, $type, $category, $amount, $description);
+    $stmt = $conn->prepare("INSERT INTO transactions (user_id, type, category, amount, description, is_recurring, recurrence_interval) VALUES (?, ?, ?, ?, ?, ?, ?)");
+    $stmt->bind_param("issdsii", $user_id, $type, $category, $amount, $description, $is_recurring, $recurrence_interval);
     $stmt->execute();
 }
 
@@ -49,11 +56,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['set_budget'])) {
     $stmt->execute();
 }
 
-// FETCH transactions + budget with month/year filtering
+// Define categories
+$categories = ['Food', 'Rent', 'Transport', 'Entertainment', 'Shopping', 'Utilities', 'Healthcare', 'Education', 'Other'];
+
+// Apply month/year filters
 $month_filter = isset($_GET['month']) ? intval($_GET['month']) : null;
 $year_filter = isset($_GET['year']) ? intval($_GET['year']) : null;
 
-// Base WHERE clause for all queries
 $where_clause = "WHERE user_id=$user_id";
 if ($month_filter) {
     $where_clause .= " AND MONTH(created_at) = $month_filter";
@@ -62,17 +71,27 @@ if ($year_filter) {
     $where_clause .= " AND YEAR(created_at) = $year_filter";
 }
 
+// Get transactions
 $transactions_query = "SELECT * FROM transactions $where_clause ORDER BY created_at DESC";
 $transactions = $conn->query($transactions_query);
-$categories = $conn->query("SELECT DISTINCT category FROM transactions WHERE user_id=$user_id");
 
-// Budget query (unchanged)
+// Calculate summary values
+$total_income = $conn->query("SELECT SUM(amount) as total FROM transactions $where_clause AND type='income'")->fetch_assoc()['total'] ?? 0;
+$total_expense = $conn->query("SELECT SUM(amount) as total FROM transactions $where_clause AND type='expense'")->fetch_assoc()['total'] ?? 0;
+$balance = $total_income - $total_expense;
+
+// Get current budget
 $budget_query = $conn->query("SELECT amount FROM budgets WHERE user_id=$user_id AND category='Total' AND month=MONTH(CURRENT_DATE()) AND year=YEAR(CURRENT_DATE())");
 $current_budget = $budget_query->fetch_assoc()['amount'] ?? 0;
 
-// Total spent (with filter)
-$total_expense_query = $conn->query("SELECT SUM(amount) as total FROM transactions $where_clause AND type='expense'");
-$total_spent = $total_expense_query->fetch_assoc()['total'] ?? 0;
+// Get transaction to edit if requested
+$edit_transaction = null;
+if (isset($_GET['edit'])) {
+    $result = $conn->query("SELECT * FROM transactions WHERE id=" . intval($_GET['edit']) . " AND user_id=$user_id");
+    if ($result->num_rows > 0) {
+        $edit_transaction = $result->fetch_assoc();
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -190,6 +209,24 @@ $total_spent = $total_expense_query->fetch_assoc()['total'] ?? 0;
     <a href="logout.php" class="btn btn-danger">logout</a>
   </div>
 
+  <!-- Summary Widget -->
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+    <div class="form-section">
+      <h3 class="text-terminal-green font-bold mb-2">Total Income</h3>
+      <p class="text-xl">₹<?= number_format($total_income, 2) ?></p>
+    </div>
+    <div class="form-section">
+      <h3 class="text-terminal-red font-bold mb-2">Total Expenses</h3>
+      <p class="text-xl">₹<?= number_format($total_expense, 2) ?></p>
+    </div>
+    <div class="form-section">
+      <h3 class="font-bold mb-2">Balance</h3>
+      <p class="text-xl <?= $balance >= 0 ? 'text-terminal-green' : 'text-terminal-red' ?>">
+        ₹<?= number_format($balance, 2) ?>
+      </p>
+    </div>
+  </div>
+
   <form method="GET" class="form-section grid grid-cols-1 md:grid-cols-4 gap-3 items-center">
     <input type="hidden" name="filter" value="1">
     <select name="month" class="p-2">
@@ -213,7 +250,7 @@ $total_spent = $total_expense_query->fetch_assoc()['total'] ?? 0;
     </select>
 
     <button type="submit" class="btn btn-primary">Filter</button>
-    <button onclick="exportTableToCSV('transactions.csv')" class="btn btn-warning">
+    <button onclick="exportToCSV()" class="btn btn-warning">
       Export CSV
     </button>
   </form>  
@@ -222,9 +259,9 @@ $total_spent = $total_expense_query->fetch_assoc()['total'] ?? 0;
     <input name="budget" type="number" step="0.01" class="p-2" placeholder="Set Budget (₹)" value="<?= $current_budget ?>" required>
     <button type="submit" name="set_budget" class="btn btn-primary">Set Budget</button>
     <p class="col-span-2">
-      Spent: ₹<?= $total_spent ?> / Budget: ₹<?= $current_budget ?> 
-      <span class="<?= ($total_spent > $current_budget) ? 'status-over' : 'status-under' ?>">
-        (<?= ($total_spent > $current_budget) ? 'OVER BUDGET' : 'WITHIN BUDGET' ?>)
+      Spent: ₹<?= $total_expense ?> / Budget: ₹<?= $current_budget ?> 
+      <span class="<?= ($total_expense > $current_budget) ? 'status-over' : 'status-under' ?>">
+        (<?= ($total_expense > $current_budget) ? 'OVER BUDGET' : 'WITHIN BUDGET' ?>)
       </span>
     </p>
   </form>
@@ -249,37 +286,28 @@ $total_spent = $total_expense_query->fetch_assoc()['total'] ?? 0;
 
   <script type="application/json" id="chartData">
   <?php
-  // Totals with filters
-$total_income = $conn->query("SELECT SUM(amount) as total FROM transactions $where_clause AND type='income'")->fetch_assoc()['total'] ?? 0;
-$total_expense = $conn->query("SELECT SUM(amount) as total FROM transactions $where_clause AND type='expense'")->fetch_assoc()['total'] ?? 0;
+  $total_income_chart = $conn->query("SELECT SUM(amount) as total FROM transactions $where_clause AND type='income'")->fetch_assoc()['total'] ?? 0;
+  $total_expense_chart = $conn->query("SELECT SUM(amount) as total FROM transactions $where_clause AND type='expense'")->fetch_assoc()['total'] ?? 0;
 
-// Monthly Spending with filters
-$monthly_query = "SELECT MONTH(created_at) as month, SUM(amount) as total 
-                 FROM transactions $where_clause AND type='expense' 
-                 GROUP BY MONTH(created_at)";
-$monthly_result = $conn->query($monthly_query);
-$months = $totals = [];
-while ($row = $monthly_result->fetch_assoc()) {
-  $months[] = date("M", mktime(0, 0, 0, $row['month'], 1));
-  $totals[] = $row['total'];
-}
+  $monthly_result = $conn->query("SELECT MONTH(created_at) as month, SUM(amount) as total FROM transactions $where_clause AND type='expense' GROUP BY MONTH(created_at)");
+  $months = $totals = [];
+  while ($row = $monthly_result->fetch_assoc()) {
+    $months[] = date("M", mktime(0, 0, 0, $row['month'], 1));
+    $totals[] = $row['total'];
+  }
 
-// Category Breakdown with filters
-$category_query = "SELECT category, SUM(amount) as total 
-                  FROM transactions $where_clause AND type='expense' 
-                  GROUP BY category";
-$category_result = $conn->query($category_query);
-$cat_labels = $cat_totals = [];
-while ($row = $category_result->fetch_assoc()) {
-  $cat_labels[] = $row['category'];
-  $cat_totals[] = $row['total'];
-}
+  $category_result = $conn->query("SELECT category, SUM(amount) as total FROM transactions $where_clause AND type='expense' GROUP BY category");
+  $cat_labels = $cat_totals = [];
+  while ($row = $category_result->fetch_assoc()) {
+    $cat_labels[] = $row['category'];
+    $cat_totals[] = $row['total'];
+  }
 
-echo json_encode([
-  'totals' => ['income' => $total_income, 'expense' => $total_expense],
-  'monthlySpending' => ['labels' => $months, 'data' => $totals],
-  'categoryBreakdown' => ['labels' => $cat_labels, 'data' => $cat_totals]
-]);
+  echo json_encode([
+    'totals' => ['income' => $total_income_chart, 'expense' => $total_expense_chart],
+    'monthlySpending' => ['labels' => $months, 'data' => $totals],
+    'categoryBreakdown' => ['labels' => $cat_labels, 'data' => $cat_totals]
+  ]);
   ?>
   </script>
 
@@ -290,14 +318,30 @@ echo json_encode([
         <option value="income" <?= isset($edit_transaction) && $edit_transaction['type'] === 'income' ? 'selected' : '' ?>>Income</option>
         <option value="expense" <?= isset($edit_transaction) && $edit_transaction['type'] === 'expense' ? 'selected' : '' ?>>Expense</option>
     </select>
-    <input name="category" list="categoryList" placeholder="Category" class="p-2" required value="<?= $edit_transaction['category'] ?? '' ?>">
-    <datalist id="categoryList">
-      <?php while($cat = $categories->fetch_assoc()): ?>
-          <option value="<?= $cat['category'] ?>">
-      <?php endwhile; ?>
-    </datalist>
+    <select name="category" class="p-2" required>
+        <option value="">Category</option>
+        <?php foreach($categories as $cat): ?>
+            <option value="<?= $cat ?>" <?= isset($edit_transaction) && $edit_transaction['category'] === $cat ? 'selected' : '' ?>>
+                <?= $cat ?>
+            </option>
+        <?php endforeach; ?>
+    </select>
     <input name="amount" type="number" step="0.01" placeholder="Amount" class="p-2" required value="<?= $edit_transaction['amount'] ?? '' ?>">
     <input name="description" placeholder="Description" class="p-2" value="<?= $edit_transaction['description'] ?? '' ?>">
+    <div class="flex flex-col">
+        <div class="flex items-center">
+            <input type="checkbox" name="is_recurring" id="is_recurring" 
+                   <?= isset($edit_transaction['is_recurring']) && $edit_transaction['is_recurring'] ? 'checked' : '' ?>>
+            <label for="is_recurring" class="ml-2">Recurring</label>
+        </div>
+        <select name="recurrence_interval" id="recurrence_interval" class="p-2 mt-1" 
+                style="<?= !isset($edit_transaction['is_recurring']) || !$edit_transaction['is_recurring'] ? 'display:none;' : '' ?>">
+            <option value="7" <?= isset($edit_transaction['recurrence_interval']) && $edit_transaction['recurrence_interval'] == 7 ? 'selected' : '' ?>>Weekly (7 days)</option>
+            <option value="30" <?= !isset($edit_transaction['recurrence_interval']) || $edit_transaction['recurrence_interval'] == 30 ? 'selected' : '' ?>>Monthly (30 days)</option>
+            <option value="90" <?= isset($edit_transaction['recurrence_interval']) && $edit_transaction['recurrence_interval'] == 90 ? 'selected' : '' ?>>Quarterly (90 days)</option>
+            <option value="365" <?= isset($edit_transaction['recurrence_interval']) && $edit_transaction['recurrence_interval'] == 365 ? 'selected' : '' ?>>Yearly (365 days)</option>
+        </select>
+    </div>
     <div class="flex gap-2 items-center">
       <button type="submit" name="<?= isset($edit_transaction) ? 'update' : 'add' ?>" class="btn btn-success flex-1">
         <?= isset($edit_transaction) ? 'Update' : 'Add' ?>
@@ -316,6 +360,7 @@ echo json_encode([
           <th>Category</th>
           <th>Amount</th>
           <th>Description</th>
+          <th>Recurring</th>
           <th>Date</th>
           <th>Actions</th>
         </tr>
@@ -329,6 +374,11 @@ echo json_encode([
           <td><?= $row['category'] ?></td>
           <td>₹<?= number_format($row['amount'], 2) ?></td>
           <td><?= $row['description'] ?></td>
+          <td>
+            <?= (isset($row['is_recurring']) && $row['is_recurring']) ? 
+                '🔁 Every ' . (isset($row['recurrence_interval']) ? $row['recurrence_interval'] : '30') . ' days' : 
+                '❌' ?>
+          </td>
           <td><?= date('d M Y', strtotime($row['created_at'])) ?></td>
           <td class="whitespace-nowrap">
             <a href="?edit=<?= $row['id'] ?>" class="text-terminal-blue">Edit</a>
@@ -345,18 +395,11 @@ echo json_encode([
 <div id="toast" class="fixed top-5 right-5 py-2 px-4 rounded hidden" style="background-color: var(--terminal-green); color: black;">Transaction Updated!</div>
 
 <script>
-  function openModal(data) {
-    document.getElementById("edit_id").value = data.id;
-    document.getElementById("edit_type").value = data.type;
-    document.getElementById("edit_category").value = data.category;
-    document.getElementById("edit_amount").value = data.amount;
-    document.getElementById("edit_description").value = data.description;
-    document.getElementById("editModal").classList.remove("hidden");
-  }
-
-  function closeModal() {
-    document.getElementById("editModal").classList.add("hidden");
-  }
+  // Toggle recurrence interval visibility
+  document.getElementById('is_recurring').addEventListener('change', function() {
+    document.getElementById('recurrence_interval').style.display = 
+      this.checked ? 'block' : 'none';
+  });
 
   function showToast() {
     const toast = document.getElementById("toast");
