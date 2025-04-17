@@ -1,4 +1,10 @@
 <?php
+require_once 'auth-check.php';
+redirect_if_logged_in();
+
+// After successful login:
+$_SESSION['user_id'] = $user['id'];
+$_SESSION['last_activity'] = time();
 include 'config.php';
 session_start();
 

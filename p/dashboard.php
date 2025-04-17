@@ -1,3 +1,8 @@
+<?php
+require_once 'auth-check.php';
+require_auth();
+?>
+
 <?php include 'header.php'; ?>
 <?php
 session_start();
@@ -206,7 +211,10 @@ if (isset($_GET['edit'])) {
     <h1 class="text-3xl font-bold" style="color: var(--terminal-green);">
       Budget_Terminal
     </h1>
-    <a href="logout.php" class="btn btn-danger">logout</a>
+    <a href="logout.php" class="text-terminal-red hover:underline" 
+   onclick="return confirm('Are you sure you want to logout?')">
+   [logout]
+</a>
   </div>
 
   <!-- Summary Widget -->

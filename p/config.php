@@ -1,4 +1,15 @@
 <?php
+session_set_cookie_params([
+    'lifetime' => 86400, // 1 day
+    'path' => '/',
+    'domain' => $_SERVER['HTTP_HOST'],
+    'secure' => true,     // Enable in production (HTTPS)
+    'httponly' => true,
+    'samesite' => 'Strict'
+]);
+
+session_start();
+
 $servername = "localhost";
 $username = "root";
 $password = "";
