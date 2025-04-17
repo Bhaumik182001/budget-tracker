@@ -5,8 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Budget Tracker | <?php echo $pageTitle ?? 'Terminal Finance' ?></title>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Mono&display=swap" rel="stylesheet">
-    <link href="styles.css" rel="stylesheet">
+
     <style>
+
         :root {
             --primary: #00ff9d;
             --secondary: #00b8ff;
@@ -23,6 +24,11 @@
             margin: 0;
             padding: 0;
             line-height: 1.6;
+        }
+
+        .terminal-card {
+            background: rgba(20, 20, 20, 0.8) !important;
+            border: 1px solid #00ff9d !important;
         }
         
         .terminal-header {
