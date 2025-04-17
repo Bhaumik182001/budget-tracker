@@ -39,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $error = "Invalid email or password!";
 }
 ?>
-
+<?php include 'header.php'; ?>
 <!-- Rest of your HTML form remains the same -->
 
 <div class="terminal-card">
