@@ -124,3 +124,9 @@ echo "✅ Database schema updates complete.<br>";
 $conn->close();
 echo "🚀 Setup completed successfully!";
 ?>
+
+<?php 
+// Redirect browser
+header("Location: http://localhost/pmf/p/dashboard.php");
+exit;
+?>

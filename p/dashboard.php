@@ -210,22 +210,24 @@ if (isset($_GET['edit'])) {
   </div>
 
   <!-- Summary Widget -->
-  <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-    <div class="form-section">
-      <h3 class="text-terminal-green font-bold mb-2">Total Income</h3>
-      <p class="text-xl">₹<?= number_format($total_income, 2) ?></p>
-    </div>
-    <div class="form-section">
-      <h3 class="text-terminal-red font-bold mb-2">Total Expenses</h3>
-      <p class="text-xl">₹<?= number_format($total_expense, 2) ?></p>
-    </div>
-    <div class="form-section">
-      <h3 class="font-bold mb-2">Balance</h3>
-      <p class="text-xl <?= $balance >= 0 ? 'text-terminal-green' : 'text-terminal-red' ?>">
-        ₹<?= number_format($balance, 2) ?>
-      </p>
-    </div>
+  <div class="flex flex-wrap justify-between items-center form-section gap-4 p-3 terminal-widget mb-6">
+  <div class="flex-1 min-w-[120px] text-center">
+    <h3 class="text-terminal-green font-mono text-sm mb-1">INCOME</h3>
+    <p class="text-lg font-bold" style="color: var(--terminal-green);">₹<?= number_format($total_income, 2) ?></p>
   </div>
+  
+  <div class="flex-1 min-w-[120px] text-center border-x border-terminal-border">
+    <h3 class="text-terminal-red font-mono text-sm mb-1">EXPENSES</h3>
+    <p class="text-lgfont-bold" style="color: var(--terminal-red);">₹<?= number_format($total_expense, 2) ?></p>
+  </div>
+  
+  <div class="flex-1 min-w-[120px] text-center">
+    <h3 class="font-mono text-sm mb-1">BALANCE</h3>
+    <p class="text-lg font-bold <?= $balance >= 0 ? 'text-terminal-green' : 'text-terminal-red' ?>">
+      ₹<?= number_format($balance, 2) ?>
+    </p>
+  </div>
+</div>
 
   <form method="GET" class="form-section grid grid-cols-1 md:grid-cols-4 gap-3 items-center">
     <input type="hidden" name="filter" value="1">
