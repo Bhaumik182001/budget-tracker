@@ -1,56 +1,64 @@
 <?php
 require_once 'config.php';
-require_once 'auth.php';
-redirect_if_logged_in();
+require_once 'auth.php'; 
 
-// Initialize variables
-$error = null;
-$email = '';
-
-// Check for logout success
-if (isset($_GET['logout'])) {
-    $error = 'You have been successfully logged out.';
-}
+$errors = [];
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $email = $conn->real_escape_string($_POST['email']);
+    $name = $_POST['name'];
+    $email = $_POST['email'];
     $password = $_POST['password'];
     
-    $result = $conn->query("SELECT * FROM users WHERE email='$email'");
-    
-    if ($result && $result->num_rows > 0) {
-        $user = $result->fetch_assoc();
-        if (password_verify($password, $user['password'])) {
-            // Regenerate session ID to prevent fixation
-            session_regenerate_id(true);
-            
-            // Set session variables
-            $_SESSION['user_id'] = $user['id'];
-            $_SESSION['user_email'] = $user['email'];
-            $_SESSION['last_activity'] = time();
-            
-            $redirect = $_SESSION['redirect_to'] ?? 'dashboard.php';
-            unset($_SESSION['redirect_to']);
-            header("Location: $redirect");
+    // Basic validation
+    if (empty($name)) {
+        $errors[] = "Name is required";
+    }
+    if (empty($email)) {
+        $errors[] = "Email is required";
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $errors[] = "Invalid email format";
+    }
+    if (empty($password)) {
+        $errors[] = "Password is required";
+    } elseif (strlen($password) < 8) {
+        $errors[] = "Password must be at least 8 characters";
+    }
+
+    if (empty($errors)) {
+        $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+        $stmt = $conn->prepare("INSERT INTO users (name, email, password) VALUES (?, ?, ?)");
+        $stmt->bind_param("sss", $name, $email, $hashed_password);
+        
+        if ($stmt->execute()) {
+            header("Location: login.php");
             exit();
+        } else {
+            $errors[] = "Registration failed. Please try again.";
         }
     }
-    
-    $error = "Invalid email or password!";
 }
+
+$pageTitle = "Register";
+include 'header.php';
 ?>
-<?php include 'header.php'; ?>
-<!-- Rest of your HTML form remains the same -->
 
 <div class="terminal-card">
-    <header>login</header>
-    <?php if (!empty($error)): ?>
+    <header>create account</header>
+    <?php if (!empty($errors)): ?>
         <div class="terminal-alert error">
-            <?php echo htmlspecialchars($error); ?>
+            <?php foreach ($errors as $error): ?>
+                <p><?php echo htmlspecialchars($error); ?></p>
+            <?php endforeach; ?>
         </div>
     <?php endif; ?>
     
     <form method="POST" action="<?php echo htmlspecialchars($_SERVER['PHP_SELF']); ?>">
+        <div class="form-group">
+            <label for="name">name:</label>
+            <input type="text" id="name" name="name" 
+                   value="<?php echo isset($_POST['name']) ? htmlspecialchars($_POST['name']) : ''; ?>"
+                   required class="terminal-input" placeholder="john_doe">
+        </div>
         <div class="form-group">
             <label for="email">email:</label>
             <input type="email" id="email" name="email" 
@@ -62,10 +70,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             <input type="password" id="password" name="password" 
                    required class="terminal-input" placeholder="••••••••">
         </div>
-        <button type="submit" class="terminal-btn">authenticate</button>
+        <button type="submit" class="terminal-btn">register</button>
     </form>
     <div class="terminal-alert">
-        no account? <a href="register.php" class="terminal-link">register here</a>
+        existing user? <a href="login.php" class="terminal-link">login here</a>
     </div>
 </div>
 
@@ -73,7 +81,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     .terminal-card {
         background: rgba(20, 20, 20, 0.8);
         border: 1px solid var(--primary);
-        max-width: 400px;
+        max-width: 500px;
         margin: 3rem auto;
         padding: 2rem;
         box-shadow: 0 0 15px rgba(0, 255, 157, 0.1);
