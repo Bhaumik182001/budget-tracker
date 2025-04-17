@@ -1,32 +1,44 @@
 <?php
-require_once 'auth-check.php';
+require_once 'config.php';
+require_once 'auth.php';
 redirect_if_logged_in();
 
-// After successful login:
-$_SESSION['user_id'] = $user['id'];
-$_SESSION['last_activity'] = time();
-include 'config.php';
-session_start();
+// Initialize variables
+$error = '';
+$email = '';
+
+// Check for logout success
+if (isset($_GET['logout'])) {
+    $error = 'You have been successfully logged out.';
+}
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $email = $_POST['email'];
+    $email = $conn->real_escape_string($_POST['email']);
     $password = $_POST['password'];
+    
     $result = $conn->query("SELECT * FROM users WHERE email='$email'");
     
-    if ($result->num_rows > 0) {
+    if ($result && $result->num_rows > 0) {
         $user = $result->fetch_assoc();
         if (password_verify($password, $user['password'])) {
+            // Regenerate session ID to prevent fixation
+            session_regenerate_id(true);
+            
+            // Set session variables
             $_SESSION['user_id'] = $user['id'];
+            $_SESSION['user_email'] = $user['email'];
+            $_SESSION['last_activity'] = time();
+            
             header("Location: dashboard.php");
             exit();
         }
     }
-    $error = "Invalid Credentials!";
+    
+    $error = "Invalid email or password!";
 }
-
-$pageTitle = "Login";
-include 'header.php';
 ?>
+
+<!-- Rest of your HTML form remains the same -->
 
 <div class="terminal-card">
     <header>login</header>
@@ -51,7 +63,7 @@ include 'header.php';
         <button type="submit" class="terminal-btn">authenticate</button>
     </form>
     <div class="terminal-alert">
-        no account? <a href="registration.php" class="terminal-link">register here</a>
+        no account? <a href="register.php" class="terminal-link">register here</a>
     </div>
 </div>
 
