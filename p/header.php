@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Budget Tracker | <?php echo $pageTitle ?? 'Terminal Finance' ?></title>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Mono&display=swap" rel="stylesheet">
+    <link href="styles.css" rel="stylesheet">
     <style>
         :root {
             --primary: #00ff9d;

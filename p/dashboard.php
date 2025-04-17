@@ -1,6 +1,10 @@
 <?php
+require_once 'config.php';
 require_once 'auth.php';
 require_auth();
+
+$user_id = $_SESSION['user_id'];
+$conn->query("CALL ProcessRecurringTransactions()");
 ?>
 
 <?php include 'header.php'; ?>

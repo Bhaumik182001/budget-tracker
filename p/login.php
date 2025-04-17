@@ -29,7 +29,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $_SESSION['user_email'] = $user['email'];
             $_SESSION['last_activity'] = time();
             
-            header("Location: dashboard.php");
+            $redirect = $_SESSION['redirect_to'] ?? 'dashboard.php';
+            unset($_SESSION['redirect_to']);
+            header("Location: $redirect");
             exit();
         }
     }
